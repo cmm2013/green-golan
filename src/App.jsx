@@ -337,11 +337,19 @@ export default function App() {
                 🍒 עונה פתוחה 2026!
               </div>
               {user ? (
-                <button onClick={handleLogout} style={{
-                  background: "rgba(255,255,255,0.6)", border: "1.5px solid rgba(200,200,200,0.5)",
-                  borderRadius: 50, padding: "8px 16px", fontSize: 12, fontWeight: 700,
-                  color: "#555", cursor: "pointer",
-                }}>יציאה</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {user.user_metadata?.avatar_url && (
+                    <img src={user.user_metadata.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid rgba(39,174,96,0.4)" }} />
+                  )}
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#1a3a28" }}>
+                    {user.user_metadata?.full_name || user.user_metadata?.name || user.email}
+                  </span>
+                  <button onClick={handleLogout} style={{
+                    background: "rgba(255,255,255,0.6)", border: "1.5px solid rgba(200,200,200,0.5)",
+                    borderRadius: 50, padding: "6px 14px", fontSize: 12, fontWeight: 700,
+                    color: "#555", cursor: "pointer",
+                  }}>יציאה</button>
+                </div>
               ) : (
                 <button onClick={() => setShowLogin(true)} style={{
                   background: "rgba(255,255,255,0.6)", border: "1.5px solid rgba(200,200,200,0.5)",
