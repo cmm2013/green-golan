@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { db } from "./supabase";
+import AdminPanel from "./AdminPanel";
 
 const TIPS = [
   { icon: "📲", title: "פורטל + Google Business", body: "עדכנו שעות ותמונות. תיירים מחפשים אתכם עכשיו." },
@@ -32,6 +33,19 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState(null);
 
+  // Auth
+  const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [myFarm, setMyFarm] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editMsg, setEditMsg] = useState(null);
+
   useEffect(() => {
     setCherries(Array.from({ length: 14 }, (_, i) => ({
       id: i,
@@ -60,13 +74,60 @@ export default function App() {
     loadFarms();
   }, []);
 
+  useEffect(() => {
+    db.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) afterLogin(session.user);
+    });
+    const { data: { subscription } } = db.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) afterLogin(session.user);
+      else { setIsAdmin(false); setMyFarm(null); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function afterLogin(user) {
+    const { data: adminData } = await db.from("admins").select("user_id").eq("user_id", user.id).single();
+    setIsAdmin(!!adminData);
+    if (!adminData) {
+      const { data: farmData } = await db.from("farms").select("*").eq("user_id", user.id).single();
+      if (farmData) { setMyFarm(farmData); setEditForm(farmData); }
+    }
+  }
+
+  async function handleLogin() {
+    setLoginLoading(true); setLoginError("");
+    const { error } = await db.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
+    setLoginLoading(false);
+    if (error) setLoginError("אימייל או סיסמה שגויים");
+    else { setShowLogin(false); setLoginEmail(""); setLoginPassword(""); }
+  }
+
+  async function handleLogout() {
+    await db.auth.signOut();
+    setTab("portal");
+  }
+
+  async function handleEditSave() {
+    setEditSaving(true);
+    const { error } = await db.from("farms").update({
+      name: editForm.name, owner: editForm.owner, village: editForm.village,
+      phone: editForm.phone, hours: editForm.hours, price: editForm.price,
+      type: editForm.type, description: editForm.description,
+    }).eq("id", myFarm.id);
+    setEditSaving(false);
+    if (error) setEditMsg({ ok: false, text: "שגיאה בשמירה. נסו שנית." });
+    else { setMyFarm({ ...myFarm, ...editForm }); setEditMsg({ ok: true, text: "✅ הפרטים עודכנו בהצלחה!" }); }
+  }
+
   async function handleSubmit() {
     if (!form.name || !form.phone) {
       setSubmitMsg({ ok: false, text: "אנא מלאו שם מטע וטלפון." });
       return;
     }
     setSubmitting(true);
-    const { error } = await db.from("farms").insert([{ ...form, approved: false }]);
+    const { error } = await db.from("farms").insert([{ ...form, approved: false, user_id: user?.id ?? null }]);
     setSubmitting(false);
     if (error) {
       setSubmitMsg({ ok: false, text: "שגיאה בשליחה. אנא נסו שנית." });
@@ -266,19 +327,39 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div style={{
-              background: "linear-gradient(135deg, #27ae60, #52c97a)",
-              color: "#fff", fontSize: 12, fontWeight: 800,
-              padding: "9px 20px", borderRadius: 50,
-              boxShadow: "0 3px 18px rgba(39,174,96,0.38)",
-              display: "flex", alignItems: "center", gap: 6,
-            }}>
-              🍒 עונה פתוחה 2026!
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                background: "linear-gradient(135deg, #27ae60, #52c97a)",
+                color: "#fff", fontSize: 12, fontWeight: 800,
+                padding: "9px 20px", borderRadius: 50,
+                boxShadow: "0 3px 18px rgba(39,174,96,0.38)",
+              }}>
+                🍒 עונה פתוחה 2026!
+              </div>
+              {user ? (
+                <button onClick={handleLogout} style={{
+                  background: "rgba(255,255,255,0.6)", border: "1.5px solid rgba(200,200,200,0.5)",
+                  borderRadius: 50, padding: "8px 16px", fontSize: 12, fontWeight: 700,
+                  color: "#555", cursor: "pointer",
+                }}>יציאה</button>
+              ) : (
+                <button onClick={() => setShowLogin(true)} style={{
+                  background: "rgba(255,255,255,0.6)", border: "1.5px solid rgba(200,200,200,0.5)",
+                  borderRadius: 50, padding: "8px 16px", fontSize: 12, fontWeight: 700,
+                  color: "#1e6b42", cursor: "pointer",
+                }}>🔑 כניסה</button>
+              )}
             </div>
           </div>
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 8, paddingBottom: 14 }}>
-            {[["portal","🌿 מטעים ועסקים"], ["tips","✨ שיווק חכם"], ["register","＋ רישום מטע"]].map(([k, label]) => (
+          <div style={{ display: "flex", gap: 8, paddingBottom: 14, flexWrap: "wrap" }}>
+            {[
+              ["portal","🌿 מטעים ועסקים"],
+              ["tips","✨ שיווק חכם"],
+              ["register","＋ רישום מטע"],
+              ...(myFarm ? [["myfarm","🌾 המטע שלי"]] : []),
+              ...(isAdmin ? [["admin","🛠️ ניהול"]] : []),
+            ].map(([k, label]) => (
               <button key={k} className={`tab-btn${tab===k?" active":""}`} onClick={() => setTab(k)}>{label}</button>
             ))}
           </div>
@@ -545,7 +626,95 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ====== MY FARM ====== */}
+        {tab === "myfarm" && editForm && (
+          <div className="fade-up">
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <div style={{ fontFamily: "'Caveat', cursive", fontSize: 46, fontWeight: 700, color: "#1a3a28", marginBottom: 8 }}>
+                המטע שלי 🌾
+              </div>
+              <p style={{ fontSize: 14, color: "#2d6a4f" }}>עדכנו את פרטי המטע — השינויים יופיעו בפורטל מיד לאחר שמירה</p>
+            </div>
+            <div className="glass" style={{ padding: "32px 36px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                {[
+                  ["שם המטע / העסק","text","name"],
+                  ["שם הבעלים","text","owner"],
+                  ["כפר / יישוב","text","village"],
+                  ["טלפון / WhatsApp","tel","phone"],
+                  ["שעות קבלה","text","hours"],
+                  ["מחיר קטיף עצמי","text","price"],
+                ].map(([label, type, field]) => (
+                  <div key={field}>
+                    <label>{label}</label>
+                    <input type={type} value={editForm[field] ?? ""} onChange={e => setEditForm(f => ({ ...f, [field]: e.target.value }))} />
+                  </div>
+                ))}
+                <div>
+                  <label>סוג העסק</label>
+                  <select value={editForm.type ?? ""} onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))}>
+                    <option>🍒 מטע קטיף עצמי</option>
+                    <option>🌿 מטע מכירה</option>
+                    <option>☕ בית קפה / מסעדה</option>
+                    <option>🏡 אירוח כפרי</option>
+                    <option>🛒 חנות תוצרת חקלאית</option>
+                  </select>
+                </div>
+                <div>
+                  <label>תיאור קצר על המטע</label>
+                  <textarea rows={3} style={{ resize: "vertical" }} value={editForm.description ?? ""} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+                </div>
+                {editMsg && (
+                  <div style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700, fontSize: 13,
+                    background: editMsg.ok ? "rgba(39,174,96,0.1)" : "rgba(192,57,43,0.1)",
+                    color: editMsg.ok ? "#1a5c3a" : "#922b21",
+                    border: `1.5px solid ${editMsg.ok ? "rgba(39,174,96,0.25)" : "rgba(192,57,43,0.25)"}`,
+                  }}>{editMsg.text}</div>
+                )}
+                <button className="btn-red" style={{ fontSize: 16, padding: "15px" }} onClick={handleEditSave} disabled={editSaving}>
+                  {editSaving ? "שומר..." : "💾 שמור שינויים"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====== ADMIN ====== */}
+        {tab === "admin" && isAdmin && <AdminPanel />}
+
       </main>
+
+      {/* ── LOGIN MODAL ── */}
+      {showLogin && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 100,
+          background: "rgba(0,0,0,0.4)", backdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        }} onClick={() => setShowLogin(false)}>
+          <div style={{
+            background: "rgba(255,255,255,0.95)", borderRadius: 24, padding: "36px 40px",
+            width: "100%", maxWidth: 380, boxShadow: "0 24px 80px rgba(0,0,0,0.18)",
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Caveat', cursive", fontSize: 36, fontWeight: 700, color: "#1a3a28", marginBottom: 6 }}>כניסה 🔑</div>
+            <p style={{ fontSize: 13, color: "#2d6a4f", marginBottom: 24 }}>כניסה לבעלי מטעים ולמנהלים</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label>אימייל</label>
+                <input type="email" placeholder="your@email.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} />
+              </div>
+              <div>
+                <label>סיסמה</label>
+                <input type="password" placeholder="••••••••" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} />
+              </div>
+              {loginError && <div style={{ color: "#922b21", fontSize: 13, fontWeight: 700 }}>{loginError}</div>}
+              <button className="btn-red" style={{ fontSize: 15, padding: "13px" }} onClick={handleLogin} disabled={loginLoading}>
+                {loginLoading ? "מתחבר..." : "כניסה"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── DECORATIVE WAVE BOTTOM ── */}
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 2, pointerEvents: "none" }}>
