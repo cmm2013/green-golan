@@ -1,31 +1,5 @@
 import { useState, useEffect } from "react";
-
-const FARMS = [
-  {
-    id: 1,
-    nameHe: "מטע אבו ג'בל",
-    village: "בוקאתא",
-    type: "קטיף עצמי",
-    hours: "06:00 – 14:00",
-    price: "35–45 ₪/ק\"ג",
-    phone: "050-000-0001",
-    desc: "מטע משפחתי עם נוף עוצר נשימה לרמת הגולן. עצי דובדבן עתיקים, פירות מתוקים.",
-    tags: ["משפחות", "חניה חינם", "נוף פנורמי"],
-    open: true,
-  },
-  {
-    id: 2,
-    nameHe: "כרם הגולן",
-    village: "בוקאתא",
-    type: "קטיף עצמי + מכירה",
-    hours: "07:00 – 15:00",
-    price: "30–40 ₪/ק\"ג",
-    phone: "050-000-0002",
-    desc: "שורות מסודרות של עצי דובדבן. מתאים לקבוצות, ילדים ומשפחות.",
-    tags: ["קבוצות", "ילדים", "אורגני"],
-    open: true,
-  },
-];
+import { db } from "./supabase";
 
 const TIPS = [
   { icon: "📲", title: "פורטל + Google Business", body: "עדכנו שעות ותמונות. תיירים מחפשים אתכם עכשיו." },
@@ -46,10 +20,17 @@ function CherrySVG({ size = 40, opacity = 0.18 }) {
   );
 }
 
+const EMPTY_FORM = { name: "", owner: "", village: "בוקאתא", phone: "", hours: "", price: "", type: "🍒 מטע קטיף עצמי", description: "" };
+
 export default function App() {
   const [tab, setTab] = useState("portal");
   const [cherries, setCherries] = useState([]);
   const [tick, setTick] = useState(0);
+  const [farms, setFarms] = useState([]);
+  const [loadingFarms, setLoadingFarms] = useState(true);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMsg, setSubmitMsg] = useState(null);
 
   useEffect(() => {
     setCherries(Array.from({ length: 14 }, (_, i) => ({
@@ -64,6 +45,36 @@ export default function App() {
     const iv = setInterval(() => setTick(t => t + 1), 50);
     return () => clearInterval(iv);
   }, []);
+
+  useEffect(() => {
+    async function loadFarms() {
+      const { data, error } = await db
+        .from("farms")
+        .select("*")
+        .eq("approved", true)
+        .eq("open", true)
+        .order("created_at", { ascending: false });
+      if (!error && data) setFarms(data);
+      setLoadingFarms(false);
+    }
+    loadFarms();
+  }, []);
+
+  async function handleSubmit() {
+    if (!form.name || !form.phone) {
+      setSubmitMsg({ ok: false, text: "אנא מלאו שם מטע וטלפון." });
+      return;
+    }
+    setSubmitting(true);
+    const { error } = await db.from("farms").insert([{ ...form, approved: false }]);
+    setSubmitting(false);
+    if (error) {
+      setSubmitMsg({ ok: false, text: "שגיאה בשליחה. אנא נסו שנית." });
+    } else {
+      setSubmitMsg({ ok: true, text: "✅ תודה! בקשת הרישום התקבלה. ניצור קשר תוך 24 שעות." });
+      setForm(EMPTY_FORM);
+    }
+  }
 
   return (
     <div dir="rtl" style={{
@@ -344,27 +355,28 @@ export default function App() {
             </div>
 
             {/* Farm cards */}
+            {loadingFarms ? (
+              <div style={{ textAlign: "center", padding: 40, color: "#27ae60", fontWeight: 700 }}>טוען מטעים...</div>
+            ) : farms.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: "#2d6a4f" }}>אין מטעים רשומים עדיין. היו הראשונים!</div>
+            ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {FARMS.map(f => (
+              {farms.map(f => (
                 <div key={f.id} className="glass" style={{ padding: "28px 30px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
                     <div>
                       <div style={{ fontFamily: "'Caveat', cursive", fontSize: 26, fontWeight: 700, color: "#1a3a28", marginBottom: 3 }}>
-                        {f.nameHe}
+                        {f.name}
                       </div>
                       <div style={{ fontSize: 13, color: "#27ae60", fontWeight: 600 }}>{f.village} · {f.type}</div>
                     </div>
                     {f.open && <span className="open-badge">🟢 פתוח עכשיו</span>}
                   </div>
 
-                  <p style={{ fontSize: 14, color: "#2d4a3a", lineHeight: 1.8, marginBottom: 16 }}>{f.desc}</p>
-
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
-                    {f.tags.map(t => <span key={t} className="tag">{t}</span>)}
-                  </div>
+                  <p style={{ fontSize: 14, color: "#2d4a3a", lineHeight: 1.8, marginBottom: 16 }}>{f.description}</p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 20 }}>
-                    {[["🕐","שעות",f.hours],["💰","מחיר",f.price],["📞","טלפון",f.phone]].map(([icon,label,val]) => (
+                    {[["🕐","שעות",f.hours],["💰","מחיר",f.price],["📞","טלפון",f.phone]].map(([icon,label,val]) => val ? (
                       <div key={label} style={{
                         background: "rgba(255,255,255,0.65)", borderRadius: 14,
                         padding: "12px 14px", border: "1.5px solid rgba(255,255,255,0.9)",
@@ -373,16 +385,17 @@ export default function App() {
                         <div style={{ fontSize: 11, color: "#27ae60", marginBottom: 4, fontWeight: 600 }}>{icon} {label}</div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: "#1a3a28" }}>{val}</div>
                       </div>
-                    ))}
+                    ) : null)}
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button className="btn-red">📲 WhatsApp להזמנה</button>
-                    <button className="btn-green">📍 נווט למטע</button>
+                    <button className="btn-red" onClick={() => window.open(`https://wa.me/972${f.phone?.replace(/^0/, "").replace(/-/g, "")}`)}>📲 WhatsApp להזמנה</button>
+                    <button className="btn-green" onClick={() => window.open(`https://maps.google.com/?q=${f.village}`)}>📍 נווט למטע</button>
                   </div>
                 </div>
               ))}
             </div>
+            )}
 
             <div style={{ textAlign: "center", marginTop: 28 }}>
               <button className="btn-red" style={{ fontSize: 15, padding: "14px 32px" }} onClick={() => setTab("register")}>
@@ -487,21 +500,21 @@ export default function App() {
             <div className="glass" style={{ padding: "32px 36px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                 {[
-                  ["שם המטע / העסק","text","לדוגמה: מטע אבו ג'בל"],
-                  ["שם הבעלים","text","שמכם המלא"],
-                  ["כפר / יישוב","text","בוקאתא"],
-                  ["טלפון / WhatsApp","tel","050-XXX-XXXX"],
-                  ["שעות קבלה","text","07:00 – 14:00"],
-                  ["מחיר קטיף עצמי","text","35 ₪ לק\"ג"],
-                ].map(([label, type, ph]) => (
-                  <div key={label}>
+                  ["שם המטע / העסק","text","לדוגמה: מטע אבו ג'בל","name"],
+                  ["שם הבעלים","text","שמכם המלא","owner"],
+                  ["כפר / יישוב","text","בוקאתא","village"],
+                  ["טלפון / WhatsApp","tel","050-XXX-XXXX","phone"],
+                  ["שעות קבלה","text","07:00 – 14:00","hours"],
+                  ["מחיר קטיף עצמי","text","35 ₪ לק\"ג","price"],
+                ].map(([label, type, ph, field]) => (
+                  <div key={field}>
                     <label>{label}</label>
-                    <input type={type} placeholder={ph} />
+                    <input type={type} placeholder={ph} value={form[field]} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} />
                   </div>
                 ))}
                 <div>
                   <label>סוג העסק</label>
-                  <select>
+                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                     <option>🍒 מטע קטיף עצמי</option>
                     <option>🌿 מטע מכירה</option>
                     <option>☕ בית קפה / מסעדה</option>
@@ -511,10 +524,19 @@ export default function App() {
                 </div>
                 <div>
                   <label>תיאור קצר על המטע</label>
-                  <textarea rows={3} placeholder="ספרו לתיירים על המטע, הנוף והדובדבנים שלכם..." style={{ resize: "vertical" }} />
+                  <textarea rows={3} placeholder="ספרו לתיירים על המטע, הנוף והדובדבנים שלכם..." style={{ resize: "vertical" }} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
-                <button className="btn-red" style={{ fontSize: 16, padding: "15px" }}>
-                  ✅ שלחו בקשת רישום
+                {submitMsg && (
+                  <div style={{ padding: "12px 16px", borderRadius: 12, fontWeight: 700, fontSize: 13,
+                    background: submitMsg.ok ? "rgba(39,174,96,0.1)" : "rgba(192,57,43,0.1)",
+                    color: submitMsg.ok ? "#1a5c3a" : "#922b21",
+                    border: `1.5px solid ${submitMsg.ok ? "rgba(39,174,96,0.25)" : "rgba(192,57,43,0.25)"}`,
+                  }}>
+                    {submitMsg.text}
+                  </div>
+                )}
+                <button className="btn-red" style={{ fontSize: 16, padding: "15px" }} onClick={handleSubmit} disabled={submitting}>
+                  {submitting ? "שולח..." : "✅ שלחו בקשת רישום"}
                 </button>
                 <div style={{ fontSize: 12, color: "#27ae60", textAlign: "center", fontWeight: 700 }}>
                   לאחר אישור · המטע יופיע בפורטל תוך 24 שעות
