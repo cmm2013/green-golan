@@ -236,7 +236,7 @@ export default function App() {
   async function handleSubmit() {
     if (!form.name || !form.phone) { setSubmitMsg({ ok: false, text: "אנא מלאו שם מטע וטלפון." }); return; }
     setSubmitting(true);
-    const { error } = await db.from("farms").insert([{ ...form, approved: false, user_id: user?.id ?? null }]);
+    const { error } = await db.from("farms").insert([{ ...form, approved: false, user_id: user?.id ?? null, email: user?.email ?? null }]);
     setSubmitting(false);
     if (error) setSubmitMsg({ ok: false, text: "שגיאה בשליחה. אנא נסו שנית." });
     else { setSubmitMsg({ ok: true, text: "✅ תודה! בקשת הרישום התקבלה. ניצור קשר תוך 24 שעות." }); setForm(EMPTY_FORM); }

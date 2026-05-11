@@ -80,6 +80,7 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen }) {
           <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
             <span>📞 {f.phone}</span>
             {f.owner && <span>👤 {f.owner}</span>}
+            {f.email && <span>✉️ <a href={`mailto:${f.email}`} style={{ color: "#1e6b42" }}>{f.email}</a></span>}
             {f.hours && <span>🕐 {f.hours}</span>}
             {f.price && <span>💰 {f.price}</span>}
           </div>
