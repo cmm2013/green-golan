@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "./supabase";
 
 const VILLAGES = ["בוקעאתא", "מג׳דל שמס", "מסעדה", "עין קניה"];
@@ -72,6 +72,7 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
   const [form, setForm] = useState({ ...f });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   function field(k, label, type = "text", opts = null) {
     const inp = {
@@ -110,6 +111,33 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
     );
   }
 
+  async function handlePhotoUpload(e) {
+    const files = Array.from(e.target.files).slice(0, 10 - (form.photos?.length || 0));
+    if (!files.length) return;
+    setUploading(true);
+    const uploaded = [];
+    for (const file of files) {
+      const path = `farm-${f.id}/${Date.now()}_${file.name.replace(/\s/g, "_")}`;
+      const { data, error } = await db.storage.from("farm-photos").upload(path, file, { upsert: true });
+      if (!error) {
+        const { data: { publicUrl } } = db.storage.from("farm-photos").getPublicUrl(data.path);
+        uploaded.push(publicUrl);
+      }
+    }
+    const newPhotos = [...(form.photos || []), ...uploaded];
+    await db.from("farms").update({ photos: newPhotos }).eq("id", f.id);
+    setForm(p => ({ ...p, photos: newPhotos }));
+    onUpdate?.({ ...f, ...form, photos: newPhotos });
+    setUploading(false);
+  }
+
+  async function handleDeletePhoto(url) {
+    const newPhotos = (form.photos || []).filter(p => p !== url);
+    await db.from("farms").update({ photos: newPhotos }).eq("id", f.id);
+    setForm(p => ({ ...p, photos: newPhotos }));
+    onUpdate?.({ ...f, ...form, photos: newPhotos });
+  }
+
   async function save() {
     setSaving(true); setMsg(null);
     const { error } = await db.from("farms").update({
@@ -135,6 +163,40 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
     }}>
       {editing ? (
         <div>
+          {/* Photo management */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: "#27ae60", fontWeight: 700, marginBottom: 6 }}>
+              תמונות ({(form.photos || []).length}/10)
+            </div>
+            {(form.photos || []).length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(80px,1fr))", gap: 6, marginBottom: 8 }}>
+                {(form.photos || []).map((url, i) => (
+                  <div key={i} style={{ position: "relative", aspectRatio: "1", borderRadius: 8, overflow: "hidden" }}>
+                    <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <button onClick={() => handleDeletePhoto(url)} style={{
+                      position: "absolute", top: 3, left: 3,
+                      background: "rgba(192,57,43,0.85)", color: "#fff",
+                      border: "none", borderRadius: "50%", width: 20, height: 20,
+                      fontSize: 11, cursor: "pointer", lineHeight: 1,
+                    }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(form.photos || []).length < 10 && (
+              <label style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                background: "rgba(39,174,96,0.08)", border: "2px dashed rgba(39,174,96,0.35)",
+                borderRadius: 12, padding: "12px", cursor: "pointer",
+                color: "#1e6b42", fontSize: 13, fontWeight: 700,
+              }}>
+                {uploading ? "מעלה..." : `📸 הוסף תמונות (עד ${10 - (form.photos || []).length})`}
+                <input type="file" accept="image/*" multiple style={{ display: "none" }}
+                  onChange={handlePhotoUpload} disabled={uploading} />
+              </label>
+            )}
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
             {field("name", "שם העסק")}
             {field("village", "ישוב", "text", VILLAGES)}
