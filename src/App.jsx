@@ -349,7 +349,7 @@ export default function App() {
                   הדובדבן בגולן 🍒
                 </div>
                 <div style={{ fontSize:11, color:"#27ae60", fontWeight:700, letterSpacing:0.8, marginTop:2 }}>
-                  תיירות חקלאית בניחוח אוויר החרמון
+                  מטעים · עסקים · תיירות חקלאית ברמת הגולן
                 </div>
               </div>
             </div>
