@@ -543,6 +543,31 @@ export default function App() {
               <div style={{ fontFamily:"'Caveat', cursive", fontSize:48, fontWeight:700, color:"#1a3a28", marginBottom:10 }}>רשמו את העסק שלכם 🌿</div>
               <p style={{ fontSize:14, color:"#2d6a4f", lineHeight:1.8 }}>חינמי לגמרי · רק 2 דקות · תיירים ימצאו אתכם מחר</p>
             </div>
+            {!user ? (
+              <div className="glass" style={{ padding:"48px 36px", textAlign:"center" }}>
+                <div style={{ fontSize:52, marginBottom:16 }}>🔑</div>
+                <div style={{ fontFamily:"'Caveat', cursive", fontSize:32, fontWeight:700, color:"#1a3a28", marginBottom:12 }}>
+                  יש להתחבר תחילה
+                </div>
+                <p style={{ fontSize:14, color:"#2d6a4f", lineHeight:1.8, marginBottom:28, maxWidth:360, margin:"0 auto 28px" }}>
+                  כדי לרשום עסק ולנהל אותו בעתיד,<br/>יש להתחבר עם Gmail או אימייל.
+                </p>
+                <button className="btn-red" style={{ fontSize:15, padding:"13px 32px" }} onClick={() => setShowLogin(true)}>
+                  🔑 כניסה / הרשמה
+                </button>
+              </div>
+            ) : myFarm ? (
+              <div className="glass" style={{ padding:"48px 36px", textAlign:"center" }}>
+                <div style={{ fontSize:52, marginBottom:16 }}>✅</div>
+                <div style={{ fontFamily:"'Caveat', cursive", fontSize:32, fontWeight:700, color:"#1a3a28", marginBottom:12 }}>
+                  העסק שלך כבר רשום!
+                </div>
+                <p style={{ fontSize:14, color:"#2d6a4f", marginBottom:28 }}>לעריכת הפרטים עברו לטאב <strong>🌾 העסק שלי</strong></p>
+                <button className="btn-red" style={{ fontSize:15, padding:"13px 32px" }} onClick={() => setTab("myfarm")}>
+                  🌾 לעסק שלי
+                </button>
+              </div>
+            ) : (
             <div className="glass" style={{ padding:"32px 36px" }}>
               <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
                 {[["שם המטע / העסק","text","לדוגמה: מטע אבו ג'בל","name"],["שם הבעלים","text","שמכם המלא","owner"],["טלפון / WhatsApp","tel","050-XXX-XXXX","phone"],["שעות קבלה","text","07:00 – 14:00","hours"],["מחיר קטיף עצמי","text","35 ₪ לק\"ג","price"]].map(([lbl,type,ph,field]) => (
@@ -572,6 +597,7 @@ export default function App() {
                 <div style={{ fontSize:12, color:"#27ae60", textAlign:"center", fontWeight:700 }}>לאחר אישור · העסק יופיע בפורטל תוך 24 שעות</div>
               </div>
             </div>
+            )}
           </div>
         )}
 
