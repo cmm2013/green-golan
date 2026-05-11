@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { db } from "./supabase";
 
+const VILLAGES = ["בוקעאתא", "מג׳דל שמס", "מסעדה", "עין קניה"];
+const TYPES = ["דובדבנים", "תפוחים", "אגסים", "ענבים", "שזיפים", "דבש", "ירקות", "תיירות", "אחר"];
+
 export default function AdminPanel() {
   const [farms, setFarms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +52,7 @@ export default function AdminPanel() {
             ⏳ ממתינים לאישור ({pending.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 32 }}>
-            {pending.map(f => <FarmRow key={f.id} farm={f} onApprove={approve} onDelete={deleteFarm} onToggleOpen={toggleOpen} />)}
+            {pending.map(f => <FarmRow key={f.id} farm={f} onApprove={approve} onDelete={deleteFarm} onToggleOpen={toggleOpen} onUpdate={updated => setFarms(fs => fs.map(x => x.id === updated.id ? updated : x))} />)}
           </div>
         </>
       )}
@@ -58,13 +61,71 @@ export default function AdminPanel() {
         ✅ מאושרים ({approved.length})
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {approved.map(f => <FarmRow key={f.id} farm={f} onApprove={approve} onDelete={deleteFarm} onToggleOpen={toggleOpen} />)}
+        {approved.map(f => <FarmRow key={f.id} farm={f} onApprove={approve} onDelete={deleteFarm} onToggleOpen={toggleOpen} onUpdate={updated => setFarms(fs => fs.map(x => x.id === updated.id ? updated : x))} />)}
       </div>
     </div>
   );
 }
 
-function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen }) {
+function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ ...f });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  function field(k, label, type = "text", opts = null) {
+    const inp = {
+      value: form[k] ?? "",
+      onChange: e => setForm(p => ({ ...p, [k]: e.target.value })),
+      style: {
+        width: "100%", padding: "8px 12px", borderRadius: 10,
+        border: "1.5px solid rgba(39,174,96,0.25)", fontSize: 13,
+        background: "rgba(255,255,255,0.7)", marginBottom: 6, boxSizing: "border-box",
+        fontFamily: "inherit", color: "#1a3a28",
+      }
+    };
+    if (opts) {
+      return (
+        <div key={k}>
+          <div style={{ fontSize: 11, color: "#27ae60", fontWeight: 700, marginBottom: 2 }}>{label}</div>
+          <select {...inp}>
+            {opts.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+      );
+    }
+    if (type === "textarea") {
+      return (
+        <div key={k}>
+          <div style={{ fontSize: 11, color: "#27ae60", fontWeight: 700, marginBottom: 2 }}>{label}</div>
+          <textarea {...inp} rows={3} style={{ ...inp.style, resize: "vertical" }} />
+        </div>
+      );
+    }
+    return (
+      <div key={k}>
+        <div style={{ fontSize: 11, color: "#27ae60", fontWeight: 700, marginBottom: 2 }}>{label}</div>
+        <input type={type} {...inp} />
+      </div>
+    );
+  }
+
+  async function save() {
+    setSaving(true); setMsg(null);
+    const { error } = await db.from("farms").update({
+      name: form.name, village: form.village, type: form.type,
+      description: form.description, phone: form.phone, owner: form.owner,
+      email: form.email, hours: form.hours, price: form.price, website: form.website,
+    }).eq("id", f.id);
+    setSaving(false);
+    if (error) { setMsg({ ok: false, text: "שגיאה בשמירה" }); }
+    else {
+      setMsg({ ok: true, text: "נשמר ✓" });
+      setEditing(false);
+      onUpdate?.({ ...f, ...form });
+    }
+  }
+
   return (
     <div style={{
       background: "rgba(255,255,255,0.62)", backdropFilter: "blur(16px)",
@@ -72,42 +133,79 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen }) {
       borderRadius: 18, padding: "20px 24px",
       boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: "'Caveat', cursive", fontSize: 22, fontWeight: 700, color: "#1a3a28" }}>{f.name}</div>
-          <div style={{ fontSize: 12, color: "#27ae60", fontWeight: 600, marginBottom: 6 }}>{f.village} · {f.type}</div>
-          <div style={{ fontSize: 13, color: "#2d4a3a", lineHeight: 1.6, marginBottom: 8 }}>{f.description}</div>
-          <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
-            <span>📞 {f.phone}</span>
-            {f.owner && <span>👤 {f.owner}</span>}
-            {f.email && <span>✉️ <a href={`mailto:${f.email}`} style={{ color: "#1e6b42" }}>{f.email}</a></span>}
-            {f.hours && <span>🕐 {f.hours}</span>}
-            {f.price && <span>💰 {f.price}</span>}
+      {editing ? (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            {field("name", "שם העסק")}
+            {field("village", "ישוב", "text", VILLAGES)}
+            {field("type", "סוג", "text", TYPES)}
+            {field("phone", "טלפון")}
+            {field("owner", "איש קשר")}
+            {field("email", "אימייל", "email")}
+            {field("hours", "שעות פעילות")}
+            {field("price", "מחיר")}
+            {field("website", "אתר")}
+          </div>
+          {field("description", "תיאור", "textarea")}
+          {msg && <div style={{ fontSize: 12, color: msg.ok ? "#27ae60" : "#c0392b", marginBottom: 8 }}>{msg.text}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button onClick={save} disabled={saving} style={{
+              background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff",
+              border: "none", borderRadius: 50, padding: "9px 20px",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>{saving ? "שומר..." : "💾 שמור"}</button>
+            <button onClick={() => { setEditing(false); setForm({ ...f }); }} style={{
+              background: "rgba(150,150,150,0.1)", color: "#555",
+              border: "1.5px solid rgba(150,150,150,0.3)",
+              borderRadius: 50, padding: "8px 18px",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>ביטול</button>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 140 }}>
-          {!f.approved && (
-            <button onClick={() => onApprove(f.id)} style={{
-              background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff",
-              border: "none", borderRadius: 50, padding: "9px 18px",
+      ) : (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: "'Caveat', cursive", fontSize: 22, fontWeight: 700, color: "#1a3a28" }}>{f.name}</div>
+            <div style={{ fontSize: 12, color: "#27ae60", fontWeight: 600, marginBottom: 6 }}>{f.village} · {f.type}</div>
+            <div style={{ fontSize: 13, color: "#2d4a3a", lineHeight: 1.6, marginBottom: 8 }}>{f.description}</div>
+            <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
+              <span>📞 {f.phone}</span>
+              {f.owner && <span>👤 {f.owner}</span>}
+              {f.email && <span>✉️ <a href={`mailto:${f.email}`} style={{ color: "#1e6b42" }}>{f.email}</a></span>}
+              {f.hours && <span>🕐 {f.hours}</span>}
+              {f.price && <span>💰 {f.price}</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 140 }}>
+            {!f.approved && (
+              <button onClick={() => onApprove(f.id)} style={{
+                background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff",
+                border: "none", borderRadius: 50, padding: "9px 18px",
+                fontSize: 12, fontWeight: 700, cursor: "pointer",
+              }}>✅ אשר</button>
+            )}
+            <button onClick={() => setEditing(true)} style={{
+              background: "rgba(52,152,219,0.1)", color: "#1a5276",
+              border: "1.5px solid rgba(52,152,219,0.3)",
+              borderRadius: 50, padding: "8px 16px",
               fontSize: 12, fontWeight: 700, cursor: "pointer",
-            }}>✅ אשר</button>
-          )}
-          <button onClick={() => onToggleOpen(f.id, f.open)} style={{
-            background: f.open ? "rgba(39,174,96,0.1)" : "rgba(150,150,150,0.1)",
-            color: f.open ? "#1a5c3a" : "#666",
-            border: `1.5px solid ${f.open ? "rgba(39,174,96,0.3)" : "rgba(150,150,150,0.3)"}`,
-            borderRadius: 50, padding: "8px 16px",
-            fontSize: 12, fontWeight: 700, cursor: "pointer",
-          }}>{f.open ? "🟢 פתוח" : "⛔ סגור"}</button>
-          <button onClick={() => onDelete(f.id)} style={{
-            background: "rgba(192,57,43,0.08)", color: "#922b21",
-            border: "1.5px solid rgba(192,57,43,0.2)",
-            borderRadius: 50, padding: "8px 16px",
-            fontSize: 12, fontWeight: 700, cursor: "pointer",
-          }}>🗑️ מחק</button>
+            }}>✏️ ערוך</button>
+            <button onClick={() => onToggleOpen(f.id, f.open)} style={{
+              background: f.open ? "rgba(39,174,96,0.1)" : "rgba(150,150,150,0.1)",
+              color: f.open ? "#1a5c3a" : "#666",
+              border: `1.5px solid ${f.open ? "rgba(39,174,96,0.3)" : "rgba(150,150,150,0.3)"}`,
+              borderRadius: 50, padding: "8px 16px",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>{f.open ? "🟢 פתוח" : "⛔ סגור"}</button>
+            <button onClick={() => onDelete(f.id)} style={{
+              background: "rgba(192,57,43,0.08)", color: "#922b21",
+              border: "1.5px solid rgba(192,57,43,0.2)",
+              borderRadius: 50, padding: "8px 16px",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>🗑️ מחק</button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
