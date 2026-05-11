@@ -138,6 +138,8 @@ export default function App() {
   const [editSaving, setEditSaving] = useState(false);
   const [editMsg, setEditMsg]       = useState(null);
   const [uploading, setUploading]   = useState(false);
+  const [claiming, setClaiming]     = useState(false);
+  const [claimMsg, setClaimMsg]     = useState(null);
 
   // Floating cherries
   useEffect(() => {
@@ -192,6 +194,18 @@ export default function App() {
   async function handleLogout() {
     await db.auth.signOut();
     setTab("portal");
+  }
+
+  async function handleClaim(farmId) {
+    setClaiming(true); setClaimMsg(null);
+    const { error } = await db.from("farms").update({ user_id: user.id, email: user.email }).eq("id", farmId).is("user_id", null);
+    if (error) {
+      setClaimMsg({ ok: false, text: "שגיאה. נסו שנית." });
+    } else {
+      const { data } = await db.from("farms").select("*").eq("id", farmId).single();
+      if (data) { setMyFarm(data); setEditForm(data); setTab("myfarm"); }
+    }
+    setClaiming(false);
   }
 
   async function handleEditSave() {
@@ -467,10 +481,20 @@ export default function App() {
                       ) : null)}
                     </div>
 
-                    <div style={{ display:"flex", gap:10 }}>
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
                       <button className="btn-red" onClick={() => window.open(`https://wa.me/972${f.phone?.replace(/^0/,"").replace(/-/g,"")}`)}>📲 WhatsApp</button>
                       <button className="btn-green" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(f.name + " " + f.village + " גולן")}`)}>📍 נווט</button>
+                      {user && !myFarm && !isAdmin && !f.user_id && (
+                        <button onClick={() => handleClaim(f.id)} disabled={claiming} style={{
+                          background:"rgba(39,174,96,0.1)", border:"1.5px dashed rgba(39,174,96,0.4)",
+                          color:"#1e6b42", borderRadius:50, padding:"9px 18px", fontSize:12,
+                          fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+                        }}>
+                          {claiming ? "מקשר..." : "✋ זה הכרטיס שלי"}
+                        </button>
+                      )}
                     </div>
+                    {claimMsg && <div style={{ ...msgStyle(claimMsg.ok), marginTop:10 }}>{claimMsg.text}</div>}
                   </div>
                 ))}
               </div>
