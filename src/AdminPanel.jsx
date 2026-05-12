@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "./supabase";
 
+function parseMapLink(url) {
+  const patterns = [
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /\/(-?\d+\.\d+),(-?\d+\.\d+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  }
+  return null;
+}
+
 const VILLAGES = ["בוקעאתא", "מג׳דל שמס", "מסעדה", "עין קניה"];
 const TYPES = ["דובדבנים", "תפוחים", "אגסים", "ענבים", "שזיפים", "דבש", "ירקות", "תיירות", "אחר"];
 
@@ -73,6 +87,8 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [mapLink, setMapLink] = useState("");
 
   function field(k, label, type = "text", opts = null) {
     const inp = {
@@ -144,6 +160,7 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
       name: form.name, village: form.village, type: form.type,
       description: form.description, phone: form.phone, owner: form.owner,
       email: form.email, hours: form.hours, price: form.price, website: form.website,
+      lat: form.lat ?? null, lng: form.lng ?? null,
     }).eq("id", f.id);
     setSaving(false);
     if (error) { setMsg({ ok: false, text: "שגיאה בשמירה" }); }
@@ -209,6 +226,44 @@ function FarmRow({ farm: f, onApprove, onDelete, onToggleOpen, onUpdate }) {
             {field("website", "אתר")}
           </div>
           {field("description", "תיאור", "textarea")}
+
+          {/* Location */}
+          <div style={{ background: "rgba(39,174,96,0.06)", border: "1.5px solid rgba(39,174,96,0.18)", borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: "#27ae60", fontWeight: 700, marginBottom: 8 }}>📍 מיקום המטע</div>
+            {form.lat && form.lng ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                <span style={{ background: "rgba(39,174,96,0.12)", color: "#1a5c3a", fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20 }}>
+                  ✅ {form.lat.toFixed(5)}, {form.lng.toFixed(5)}
+                </span>
+                <a href={`https://maps.google.com/?q=${form.lat},${form.lng}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#1e6b42", fontWeight: 700 }}>🗺️ הצג</a>
+                <button onClick={() => { setForm(p => ({ ...p, lat: null, lng: null })); setMapLink(""); }} style={{ background: "rgba(192,57,43,0.08)", color: "#922b21", border: "1.5px solid rgba(192,57,43,0.2)", borderRadius: 50, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✕ נקה</button>
+              </div>
+            ) : (
+              <p style={{ fontSize: 12, color: "#2d6a4f", marginBottom: 8 }}>לא הוגדר מיקום</p>
+            )}
+            <button type="button" disabled={gpsLoading} onClick={() => {
+              setGpsLoading(true);
+              navigator.geolocation.getCurrentPosition(
+                pos => { setForm(p => ({ ...p, lat: pos.coords.latitude, lng: pos.coords.longitude })); setGpsLoading(false); },
+                () => { alert("לא ניתן לקבל מיקום"); setGpsLoading(false); }
+              );
+            }} style={{ background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff", border: "none", borderRadius: 50, padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
+              {gpsLoading ? "מאתר..." : "📍 אתר את המיקום שלי"}
+            </button>
+            <input type="url" placeholder="או הדבק קישור מ-Google Maps / Waze..."
+              value={mapLink}
+              onChange={e => {
+                setMapLink(e.target.value);
+                const coords = parseMapLink(e.target.value);
+                if (coords) setForm(p => ({ ...p, lat: coords.lat, lng: coords.lng }));
+              }}
+              style={{ width: "100%", padding: "7px 12px", borderRadius: 10, border: "1.5px solid rgba(39,174,96,0.25)", fontSize: 12, background: "rgba(255,255,255,0.7)", boxSizing: "border-box", fontFamily: "inherit", color: "#1a3a28" }}
+            />
+            {mapLink && !(form.lat && form.lng) && (
+              <div style={{ fontSize: 11, color: "#c0392b", marginTop: 4, fontWeight: 700 }}>לא ניתן לחלץ קואורדינטות. נסו קישור אחר.</div>
+            )}
+          </div>
+
           {msg && <div style={{ fontSize: 12, color: msg.ok ? "#27ae60" : "#c0392b", marginBottom: 8 }}>{msg.text}</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
             <button onClick={save} disabled={saving} style={{

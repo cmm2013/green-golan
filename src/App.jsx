@@ -96,8 +96,23 @@ function PhotoSlideshow({ photos }) {
   );
 }
 
+// ── Map link parser ───────────────────────────────────────
+function parseMapLink(url) {
+  const patterns = [
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /\/(-?\d+\.\d+),(-?\d+\.\d+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  }
+  return null;
+}
+
 // ── Form fields helper ────────────────────────────────────
-const EMPTY_FORM = { name: "", owner: "", village: "בוקעאתא", phone: "", hours: "", price: "", type: "🍒 מטע קטיף עצמי", description: "" };
+const EMPTY_FORM = { name: "", owner: "", village: "בוקעאתא", phone: "", hours: "", price: "", type: "🍒 מטע קטיף עצמי", description: "", lat: null, lng: null };
 
 const BUSINESS_TYPES = ["🍒 מטע קטיף עצמי","🌿 מטע מכירה","☕ בית קפה / מסעדה","🏡 אירוח כפרי","🛒 חנות תוצרת חקלאית"];
 
@@ -140,6 +155,8 @@ export default function App() {
   const [uploading, setUploading]   = useState(false);
   const [claiming, setClaiming]     = useState(false);
   const [claimMsg, setClaimMsg]     = useState(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [mapLink, setMapLink]       = useState("");
 
   // Floating cherries
   useEffect(() => {
@@ -214,6 +231,7 @@ export default function App() {
       name: editForm.name, owner: editForm.owner, village: editForm.village,
       phone: editForm.phone, hours: editForm.hours, price: editForm.price,
       type: editForm.type, description: editForm.description,
+      lat: editForm.lat ?? null, lng: editForm.lng ?? null,
     }).eq("id", myFarm.id);
     setEditSaving(false);
     if (error) setEditMsg({ ok: false, text: "שגיאה בשמירה. נסו שנית." });
@@ -250,10 +268,65 @@ export default function App() {
   async function handleSubmit() {
     if (!form.name || !form.phone) { setSubmitMsg({ ok: false, text: "אנא מלאו שם מטע וטלפון." }); return; }
     setSubmitting(true);
-    const { error } = await db.from("farms").insert([{ ...form, approved: false, user_id: user?.id ?? null, email: user?.email ?? null }]);
+    const { error } = await db.from("farms").insert([{ ...form, approved: false, user_id: user?.id ?? null, email: user?.email ?? null, lat: form.lat ?? null, lng: form.lng ?? null }]);
     setSubmitting(false);
     if (error) setSubmitMsg({ ok: false, text: "שגיאה בשליחה. אנא נסו שנית." });
     else { setSubmitMsg({ ok: true, text: "✅ תודה! בקשת הרישום התקבלה. ניצור קשר תוך 24 שעות." }); setForm(EMPTY_FORM); }
+  }
+
+  function captureGPS(setter) {
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setter(f => ({ ...f, lat: pos.coords.latitude, lng: pos.coords.longitude }));
+        setGpsLoading(false);
+      },
+      () => { alert("לא ניתן לקבל מיקום. אנא אפשרו גישה."); setGpsLoading(false); }
+    );
+  }
+
+  function handleMapLinkPaste(val, setter) {
+    setMapLink(val);
+    const coords = parseMapLink(val);
+    if (coords) setter(f => ({ ...f, lat: coords.lat, lng: coords.lng }));
+  }
+
+  function LocationSection({ formState, setter }) {
+    const hasCoords = formState.lat && formState.lng;
+    return (
+      <div style={{ background: "rgba(39,174,96,0.06)", border: "1.5px solid rgba(39,174,96,0.18)", borderRadius: 16, padding: "16px 18px" }}>
+        <label style={{ marginBottom: 10 }}>📍 מיקום המטע</label>
+        {hasCoords ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+            <span style={{ background: "rgba(39,174,96,0.12)", color: "#1a5c3a", fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: 20 }}>
+              ✅ מיקום נשמר: {formState.lat.toFixed(5)}, {formState.lng.toFixed(5)}
+            </span>
+            <button type="button" onClick={() => { setter(f => ({ ...f, lat: null, lng: null })); setMapLink(""); }}
+              style={{ background: "rgba(192,57,43,0.08)", color: "#922b21", border: "1.5px solid rgba(192,57,43,0.2)", borderRadius: 50, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              ✕ נקה
+            </button>
+            <a href={`https://maps.google.com/?q=${formState.lat},${formState.lng}`} target="_blank" rel="noreferrer"
+              style={{ fontSize: 12, color: "#1e6b42", fontWeight: 700 }}>🗺️ הצג במפה</a>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: "#2d6a4f", marginBottom: 10 }}>לא הוגדר מיקום. השתמשו בכפתור או הדביקו קישור.</p>
+        )}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          <button type="button" onClick={() => captureGPS(setter)} disabled={gpsLoading}
+            style={{ background: "linear-gradient(135deg,#27ae60,#2ecc71)", color: "#fff", border: "none", borderRadius: 50, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            {gpsLoading ? "מאתר..." : "📍 אתר את המיקום שלי עכשיו"}
+          </button>
+        </div>
+        <input type="url" placeholder="או הדבק קישור מ-Google Maps / Waze..."
+          value={mapLink}
+          onChange={e => handleMapLinkPaste(e.target.value, setter)}
+          style={{ fontSize: 13 }}
+        />
+        {mapLink && !hasCoords && (
+          <div style={{ fontSize: 12, color: "#c0392b", marginTop: 6, fontWeight: 700 }}>לא ניתן לחלץ קואורדינטות מהקישור. נסו קישור אחר.</div>
+        )}
+      </div>
+    );
   }
 
   function handleNearMe() {
@@ -270,9 +343,9 @@ export default function App() {
     let list = farms.filter(f => villageFilter === "הכל" || f.village === villageFilter);
     if (nearMe && userPos) {
       list = [...list].sort((a, b) => {
-        const vA = VILLAGES.find(v => v.name === a.village) || VILLAGES[0];
-        const vB = VILLAGES.find(v => v.name === b.village) || VILLAGES[0];
-        return haversine(userPos.lat, userPos.lng, vA.lat, vA.lng) - haversine(userPos.lat, userPos.lng, vB.lat, vB.lng);
+        const posA = (a.lat && a.lng) ? a : (VILLAGES.find(v => v.name === a.village) || VILLAGES[0]);
+        const posB = (b.lat && b.lng) ? b : (VILLAGES.find(v => v.name === b.village) || VILLAGES[0]);
+        return haversine(userPos.lat, userPos.lng, posA.lat, posA.lng) - haversine(userPos.lat, userPos.lng, posB.lat, posB.lng);
       });
     }
     return list;
@@ -483,7 +556,7 @@ export default function App() {
 
                     <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
                       <button className="btn-red" onClick={() => window.open(`https://wa.me/972${f.phone?.replace(/^0/,"").replace(/-/g,"")}`)}>📲 WhatsApp</button>
-                      <button className="btn-green" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(f.name + " " + f.village + " גולן")}`)}>📍 נווט</button>
+                      <button className="btn-green" onClick={() => window.open(f.lat && f.lng ? `https://maps.google.com/?q=${f.lat},${f.lng}` : `https://maps.google.com/?q=${encodeURIComponent(f.name + " " + f.village + " גולן")}`)}>📍 נווט</button>
                       {user && !myFarm && !isAdmin && !f.user_id && (
                         <button onClick={() => handleClaim(f.id)} disabled={claiming} style={{
                           background:"rgba(39,174,96,0.1)", border:"1.5px dashed rgba(39,174,96,0.4)",
@@ -610,6 +683,7 @@ export default function App() {
                     {BUSINESS_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
+                <LocationSection formState={form} setter={setForm} />
                 <div>
                   <label>תיאור קצר</label>
                   <textarea rows={3} placeholder="ספרו לתיירים על העסק, הנוף והדובדבנים שלכם..." style={{ resize:"vertical" }} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
@@ -672,6 +746,7 @@ export default function App() {
                     {BUSINESS_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
+                <LocationSection formState={editForm} setter={setEditForm} />
                 <div>
                   <label>תיאור קצר</label>
                   <textarea rows={3} style={{ resize:"vertical" }} value={editForm.description??""} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
